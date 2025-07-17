@@ -20,6 +20,10 @@ export default function ChatPlatform() {
     setCurrentChatId("new")
   }
 
+  const handleChatIdChange = (newChatId: string) => {
+    setCurrentChatId(newChatId)
+  }
+
   const navigateToSettings = () => {
     setCurrentScreen("settings")
   }
@@ -57,7 +61,12 @@ export default function ChatPlatform() {
         />
 
         {/* Main Chat Interface */}
-        <ChatInterface activeAgent={activeAgent} chatId={currentChatId} onAgentChange={setActiveAgent} />
+        <ChatInterface 
+          activeAgent={activeAgent} 
+          chatId={currentChatId} 
+          onAgentChange={setActiveAgent}
+          onChatIdChange={handleChatIdChange}
+        />
       </div>
 
       {/* Modals */}

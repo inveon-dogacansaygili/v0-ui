@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -8,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Badge } from "@/components/ui/badge"
 import { Plus, Search, FileText, Users, ChevronDown, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { chatManager } from "@/lib/chat-manager"
 
 interface SidebarProps {
   onActionLogsClick: () => void
@@ -17,48 +18,13 @@ interface SidebarProps {
   onNewChat: () => void
 }
 
-const agents = [
-  {
-    id: "ui-agent",
-    name: "UI Agent",
-    color: "bg-blue-500",
-    conversations: [
-      { id: "chat-1", title: "Dashboard redesign concepts", timestamp: "2 hours ago", type: "A" },
-      { id: "chat-2", title: "Component library updates", timestamp: "1 day ago", type: "P" },
-    ],
-  },
-  {
-    id: "seo-agent",
-    name: "SEO Agent",
-    color: "bg-green-500",
-    conversations: [
-      { id: "chat-3", title: "Keyword optimization strategy", timestamp: "3 hours ago", type: "A" },
-      { id: "chat-4", title: "Content audit results", timestamp: "2 days ago", type: "P" },
-    ],
-  },
-  {
-    id: "marketing-agent",
-    name: "Performance Marketing Agent",
-    color: "bg-purple-500",
-    conversations: [{ id: "chat-5", title: "Campaign performance analysis", timestamp: "5 hours ago", type: "A" }],
-  },
-  {
-    id: "campaign-agent",
-    name: "Campaign Agent",
-    color: "bg-orange-500",
-    conversations: [{ id: "chat-6", title: "Q4 campaign planning", timestamp: "1 day ago", type: "P" }],
-  },
-  {
-    id: "merchandising-agent",
-    name: "Merchandising Agent",
-    color: "bg-pink-500",
-    conversations: [{ id: "chat-7", title: "Product catalog optimization", timestamp: "6 hours ago", type: "A" }],
-  },
-]
-
-const allConversations = agents
-  .flatMap((agent) => agent.conversations.map((conv) => ({ ...conv, agent: agent.name, agentColor: agent.color })))
-  .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+const agentColors = {
+  "UI Agent": "bg-blue-500",
+  "SEO Agent": "bg-green-500",
+  "Performance Marketing Agent": "bg-purple-500",
+  "Campaign Agent": "bg-orange-500",
+  "Merchandising Agent": "bg-pink-500",
+}
 
 export function Sidebar({
   onActionLogsClick,
@@ -68,7 +34,88 @@ export function Sidebar({
   onNewChat,
 }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState("")
-  const [expandedAgents, setExpandedAgents] = useState<string[]>(["ui-agent"])
+  const [expandedAgents, setExpandedAgents] = useState<string[]>(["UI Agent"])
+  const [allSessions, setAllSessions] = useState(() => chatManager.getAllSessions())
+
+  // Listen for changes in the chat manager
+  useEffect(() => {
+    const unsubscribe = chatManager.addListener(() => {
+      setAllSessions(chatManager.getAllSessions())
+    })
+
+    return unsubscribe
+  }, [])
+
+  // Group sessions by agent
+  const sessionsByAgent = allSessions.reduce((acc, session) => {
+    const agent = session.agent || "Unknown Agent"
+    if (!acc[agent]) {
+      acc[agent] = []
+    }
+    acc[agent].push(session)
+    return acc
+  }, {} as Record<string, typeof allSessions>)
+
+  // Create agents structure with their conversations
+  const agents = Object.entries(sessionsByAgent).map(([agentName, sessions]) => ({
+    id: agentName.toLowerCase().replace(/\s+/g, "-"),
+    name: agentName,
+    color: agentColors[agentName as keyof typeof agentColors] || "bg-gray-500",
+    conversations: sessions.map(session => {
+      const now = new Date()
+      const diffMs = now.getTime() - session.timestamp.getTime()
+      const diffMins = Math.floor(diffMs / (1000 * 60))
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+      
+      let timeString = ""
+      if (diffMins < 1) {
+        timeString = "Just now"
+      } else if (diffMins < 60) {
+        timeString = `${diffMins} min ago`
+      } else if (diffHours < 24) {
+        timeString = `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`
+      } else {
+        timeString = `${diffDays} day${diffDays === 1 ? '' : 's'} ago`
+      }
+      
+      return {
+        id: session.id,
+        title: session.name,
+        timestamp: timeString,
+        type: "A", // Active for now
+      }
+    })
+  }))
+
+  // All conversations flattened
+  const allConversations = allSessions.map(session => {
+    const now = new Date()
+    const diffMs = now.getTime() - session.timestamp.getTime()
+    const diffMins = Math.floor(diffMs / (1000 * 60))
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+    
+    let timeString = ""
+    if (diffMins < 1) {
+      timeString = "Just now"
+    } else if (diffMins < 60) {
+      timeString = `${diffMins} min ago`
+    } else if (diffHours < 24) {
+      timeString = `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`
+    } else {
+      timeString = `${diffDays} day${diffDays === 1 ? '' : 's'} ago`
+    }
+    
+    return {
+      id: session.id,
+      title: session.name,
+      timestamp: timeString,
+      type: "A",
+      agent: session.agent || "Unknown Agent",
+      agentColor: agentColors[session.agent as keyof typeof agentColors] || "bg-gray-500",
+    }
+  })
 
   const toggleAgent = (agentId: string) => {
     setExpandedAgents((prev) => (prev.includes(agentId) ? prev.filter((id) => id !== agentId) : [...prev, agentId]))

@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils"
 import { ChatEmptyState } from "@/components/chat-empty-state"
 import { useAgent } from "agents/react";
 import { useAgentChat } from "agents/ai-react";
+import { chatManager } from "@/lib/chat-manager"
 
 interface SystemAction {
   type: "success" | "error" | "info"
@@ -60,6 +61,7 @@ interface ChatInterfaceProps {
   activeAgent: string
   chatId: string
   onAgentChange: (agent: string) => void
+  onChatIdChange?: (chatId: string) => void
 }
 
 const agentColors = {
@@ -170,10 +172,19 @@ const sampleMessages: Message[] = [
   },
 ]
 
-export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterfaceProps) {
+export function ChatInterface({ activeAgent, chatId, onAgentChange, onChatIdChange }: ChatInterfaceProps) {
+  // Get or create session - only create if chatId is "new" or empty
+  const [currentSessionId, setCurrentSessionId] = useState<string>(() => {
+    if (chatId === "new" || !chatId) {
+      // Don't create session here, wait for useEffect
+      return ""
+    }
+    return chatId
+  })
 
   const agent = useAgent({
-    agent: "ZeroAgent",
+    agent: "zero-agent",
+    name: currentSessionId ? "session-" + currentSessionId : undefined,
     host: "http://localhost:8787",
   });
 
@@ -220,10 +231,9 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
     })
   }
 
-  // Get messages to display - either agent messages or sample messages
-  // debugger;
-  const displayMessages = isNewChat 
-    ? [] 
+  // Get messages to display - ensure they are always Message objects
+  const displayMessages: Message[] = isNewChat 
+    ? [] // Empty array for new chats 
     : agentMessages.length > 0 
       ? formatAgentMessagesForUI(agentMessages)
       : chatId !== "new" 
@@ -249,9 +259,10 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
 
   const handleSendMessage = (e: React.FormEvent) => {
     if (!agentInput.trim()) return
-    debugger;
+    
+    e.preventDefault();
 
-    // If this is a new chat, set isNewChat to false
+    // If this is a new chat, set isNewChat to false and update agent
     if (isNewChat) {
       setIsNewChat(false)
       // Set the active agent based on selection
@@ -259,11 +270,12 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
         const mappedAgent = agentMapping[selectedAgent as keyof typeof agentMapping]
         if (mappedAgent) {
           onAgentChange(mappedAgent)
+          chatManager.updateSessionAgent(currentSessionId, mappedAgent)
         }
       }
     }
-    e.preventDefault();
-    handleAgentSubmit(e as unknown as React.FormEvent);
+    
+    handleAgentSubmit(e as React.FormEvent<HTMLFormElement>);
   }
 
   const handleInputChangeWrapper = (value: string) => {
@@ -273,7 +285,7 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      debugger;
+      // debugger;
       handleSendMessage(e)
     }
   }
@@ -296,15 +308,51 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
 
   // Reset to new chat state when chatId changes to "new"
   useEffect(() => {
-    if (chatId === "new") {
+    if (chatId === "new" || !chatId) {
+      // Create a new session immediately when starting a new chat
+      const newSessionId = chatManager.createNewSession()
+      console.log("Creating new session for new chat:", newSessionId)
+      setCurrentSessionId(newSessionId)
+      onChatIdChange?.(newSessionId)
       setIsNewChat(true)
       setSelectedAgent("auto")
       clearHistory()
-    } else {
+    } else if (chatId !== currentSessionId) {
+      // Switching to an existing chat
+      setCurrentSessionId(chatId)
       setIsNewChat(false)
-      // Load sample messages or existing conversation
+      // Load existing session messages if available
+      const session = chatManager.getSession(chatId)
+      if (session && session.messages.length > 0) {
+        // The useAgentChat hook should restore messages based on the session name
+        // This will be handled automatically by the agent framework
+      }
     }
-  }, [chatId, clearHistory])
+  }, [chatId, clearHistory, onChatIdChange, currentSessionId])
+
+  // Update session messages when agentMessages change
+  useEffect(() => {
+    if (agentMessages.length > 0 && currentSessionId) {
+      console.log("Updating session messages for session:", currentSessionId, "messages:", agentMessages.length)
+      chatManager.updateSessionMessages(currentSessionId, agentMessages)
+      
+      // Only update session name if this is a new chat (isNewChat is false means we just sent the first message)
+      // and we're not loading (to prevent updates during streaming)
+      // and the session doesn't already have a custom name
+      if (!isLoading && !isNewChat) {
+        const session = chatManager.getSession(currentSessionId)
+        const firstUserMessage = agentMessages.find(msg => msg.role === "user")
+        
+        // Only update if session exists, has default name, and we have a user message
+        if (session && firstUserMessage && typeof firstUserMessage.content === "string" && 
+            session.name.startsWith("Chat ")) {
+          const sessionName = firstUserMessage.content.slice(0, 50) + (firstUserMessage.content.length > 50 ? "..." : "")
+          console.log("Updating session name from", session.name, "to:", sessionName)
+          chatManager.updateSessionName(currentSessionId, sessionName)
+        }
+      }
+    }
+  }, [agentMessages, currentSessionId, isLoading, isNewChat])
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
