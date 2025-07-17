@@ -221,11 +221,14 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
   }
 
   // Get messages to display - either agent messages or sample messages
+  // debugger;
   const displayMessages = isNewChat 
     ? [] 
-    : chatId === "new" || agentMessages.length === 0 
-      ? sampleMessages 
-      : formatAgentMessagesForUI(agentMessages)
+    : agentMessages.length > 0 
+      ? formatAgentMessagesForUI(agentMessages)
+      : chatId !== "new" 
+        ? sampleMessages 
+        : []
 
   const toggleSystemActionDetails = (messageId: string) => {
     setExpandedSystemActions((prev) =>
@@ -244,8 +247,9 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
     // In a real app, this would trigger the action execution
   }
 
-  const handleSendMessage = () => {
+  const handleSendMessage = (e: React.FormEvent) => {
     if (!agentInput.trim()) return
+    debugger;
 
     // If this is a new chat, set isNewChat to false
     if (isNewChat) {
@@ -258,9 +262,8 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
         }
       }
     }
-
-    // Use the agent's submit handler
-    handleAgentSubmit(new Event('submit') as any)
+    e.preventDefault();
+    handleAgentSubmit(e as unknown as React.FormEvent);
   }
 
   const handleInputChangeWrapper = (value: string) => {
@@ -270,7 +273,8 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      handleSendMessage()
+      debugger;
+      handleSendMessage(e)
     }
   }
 
@@ -334,7 +338,7 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
       {isNewChat ? (
         <ChatEmptyState
           onInputChange={handleInputChangeWrapper}
-          onSendMessage={handleSendMessage}
+          onSendMessage={(e) => {handleSendMessage(e)}}
           selectedAgent={selectedAgent}
           onAgentSelect={handleAgentSelect}
         />
@@ -568,13 +572,13 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
                   <Input
                     value={agentInput}
                     onChange={handleAgentInputChange}
-                    onKeyPress={handleKeyPress}
+                    onKeyPress={(e) => {handleKeyPress(e)}}
                     placeholder="Type your message..."
                     className="min-h-[48px] pr-12 bg-white border-slate-200/50 rounded-xl shadow-sm focus:shadow-md transition-shadow resize-none"
                     disabled={isLoading}
                   />
                   <Button
-                    onClick={handleSendMessage}
+                    onClick={(e) => {handleSendMessage(e)}}
                     disabled={!agentInput.trim() || isLoading}
                     size="icon"
                     className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 bg-blue-600 hover:bg-blue-700 rounded-lg"

@@ -8,7 +8,7 @@ import { Plus, Mic, Sparkles, Bot } from "lucide-react"
 
 interface ChatEmptyStateProps {
   onInputChange: (value: string) => void
-  onSendMessage: () => void
+  onSendMessage: (e: React.FormEvent) => void
   selectedAgent?: string
   onAgentSelect: (agent: string) => void
 }
@@ -116,7 +116,7 @@ export function ChatEmptyState({
             placeholder="Ask anything"
             className="h-14 px-12 py-6 pr-16 bg-white border border-slate-200 rounded-full shadow-sm focus:shadow-md transition-shadow text-base"
             onChange={(e) => onInputChange(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && onSendMessage()}
+            onKeyPress={(e) => e.key === "Enter" && onSendMessage(e)}
           />
           <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-500 hover:text-slate-700">
