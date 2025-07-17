@@ -231,14 +231,28 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange, onChatIdChan
     })
   }
 
-  // Get messages to display - ensure they are always Message objects
+  // Get messages to display - prioritize agent messages for active conversations
   const displayMessages: Message[] = isNewChat 
     ? [] // Empty array for new chats 
-    : agentMessages.length > 0 
-      ? formatAgentMessagesForUI(agentMessages)
-      : chatId !== "new" 
-        ? sampleMessages 
-        : []
+    : (() => {
+        // For active conversations with agent messages, prioritize those
+        if (agentMessages.length > 0) {
+          console.log("Using agent messages for display, count:", agentMessages.length)
+          return formatAgentMessagesForUI(agentMessages)
+        }
+        
+        // For existing sessions without active agent messages, load from ChatManager
+        if (currentSessionId && !isNewChat) {
+          const session = chatManager.getSession(currentSessionId)
+          if (session && session.messages.length > 0) {
+            console.log("Loading messages from ChatManager for session:", currentSessionId, "count:", session.messages.length)
+            return formatAgentMessagesForUI(session.messages)
+          }
+        }
+        
+        // Final fallback to sample messages
+        return sampleMessages
+      })()
 
   const toggleSystemActionDetails = (messageId: string) => {
     setExpandedSystemActions((prev) =>
@@ -319,16 +333,40 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange, onChatIdChan
       clearHistory()
     } else if (chatId !== currentSessionId) {
       // Switching to an existing chat
+      console.log("Switching to existing chat:", chatId, "from:", currentSessionId)
+      
+      // Only clear history if we're actually switching to a different session
+      if (currentSessionId && chatId !== currentSessionId) {
+        clearHistory()
+      }
+      
       setCurrentSessionId(chatId)
       setIsNewChat(false)
-      // Load existing session messages if available
+      
+      // Load existing session messages if available - messages will be loaded via displayMessages logic
       const session = chatManager.getSession(chatId)
       if (session && session.messages.length > 0) {
-        // The useAgentChat hook should restore messages based on the session name
-        // This will be handled automatically by the agent framework
+        console.log("Found existing session with", session.messages.length, "messages - they will be displayed from ChatManager")
+      } else {
+        console.log("No stored messages found for session:", chatId)
       }
     }
   }, [chatId, clearHistory, onChatIdChange, currentSessionId])
+
+  // Force agent reconnection when session changes
+  useEffect(() => {
+    if (currentSessionId && !isNewChat) {
+      console.log("Session changed, current agent messages:", agentMessages.length)
+      
+      // Check if we need to manually restore messages from ChatManager
+      const session = chatManager.getSession(currentSessionId)
+      if (session && session.messages.length > 0 && agentMessages.length === 0) {
+        console.log("Session has stored messages but agent messages is empty. Session messages:", session.messages.length)
+        // Try to manually restore messages by populating the agent chat
+        // This might require a different approach since useAgentChat doesn't have a direct way to set messages
+      }
+    }
+  }, [currentSessionId, isNewChat, agentMessages.length])
 
   // Update session messages when agentMessages change
   useEffect(() => {
