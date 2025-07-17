@@ -191,14 +191,41 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
     maxSteps: 5,
   });
 
-  const [messages, setMessages] = useState<Message[]>(sampleMessages)
-  const [inputValue, setInputValue] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<string>("auto")
   const [expandedSystemActions, setExpandedSystemActions] = useState<string[]>([])
   const [expandedNextActions, setExpandedNextActions] = useState<string[]>([])
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const [isNewChat, setIsNewChat] = useState(chatId === "new" || !chatId)
+
+  // Convert agent messages to UI messages format
+  const formatAgentMessagesForUI = (messages: typeof agentMessages): Message[] => {
+    return messages.map((msg, index) => {
+      let content = "";
+      if (typeof msg.content === "string") {
+        content = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        content = (msg.content as any[]).map((c: any) => c.type === "text" ? c.text : "").join("");
+      } else {
+        content = String(msg.content);
+      }
+      
+      return {
+        id: index.toString(),
+        type: msg.role === "user" ? "user" : "agent",
+        content,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        agent: msg.role === "assistant" ? activeAgent : undefined,
+      };
+    })
+  }
+
+  // Get messages to display - either agent messages or sample messages
+  const displayMessages = isNewChat 
+    ? [] 
+    : chatId === "new" || agentMessages.length === 0 
+      ? sampleMessages 
+      : formatAgentMessagesForUI(agentMessages)
 
   const toggleSystemActionDetails = (messageId: string) => {
     setExpandedSystemActions((prev) =>
@@ -218,7 +245,7 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
   }
 
   const handleSendMessage = () => {
-    if (!inputValue.trim()) return
+    if (!agentInput.trim()) return
 
     // If this is a new chat, set isNewChat to false
     if (isNewChat) {
@@ -232,49 +259,12 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
       }
     }
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      type: "user",
-      content: inputValue,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    }
+    // Use the agent's submit handler
+    handleAgentSubmit(new Event('submit') as any)
+  }
 
-    setMessages((prev) => [...prev, newMessage])
-    setInputValue("")
-    setIsTyping(true)
-
-    // Simulate agent response with next actions
-    setTimeout(() => {
-      const currentAgent =
-        selectedAgent !== "auto" ? agentMapping[selectedAgent as keyof typeof agentMapping] : activeAgent
-      const agentResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        type: "agent",
-        content: "I understand your request. Let me help you with that...",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        agent: currentAgent,
-        nextActions: [
-          {
-            id: "na_new1",
-            title: "Follow up on request",
-            description: "Continue with the next logical step",
-            priority: "high",
-            estimatedTime: "10 min",
-            agent: currentAgent,
-          },
-          {
-            id: "na_new2",
-            title: "Provide additional resources",
-            description: "Share relevant documentation and examples",
-            priority: "medium",
-            estimatedTime: "5 min",
-            agent: currentAgent,
-          },
-        ],
-      }
-      setMessages((prev) => [...prev, agentResponse])
-      setIsTyping(false)
-    }, 2000)
+  const handleInputChangeWrapper = (value: string) => {
+    handleAgentInputChange({ target: { value } } as React.ChangeEvent<HTMLInputElement>)
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -298,19 +288,19 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight
     }
-  }, [messages])
+  }, [displayMessages])
 
   // Reset to new chat state when chatId changes to "new"
   useEffect(() => {
     if (chatId === "new") {
       setIsNewChat(true)
       setSelectedAgent("auto")
-      setMessages([])
+      clearHistory()
     } else {
       setIsNewChat(false)
-      setMessages(sampleMessages)
+      // Load sample messages or existing conversation
     }
-  }, [chatId])
+  }, [chatId, clearHistory])
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -343,7 +333,7 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
       {/* Conditional Rendering based on isNewChat */}
       {isNewChat ? (
         <ChatEmptyState
-          onInputChange={setInputValue}
+          onInputChange={handleInputChangeWrapper}
           onSendMessage={handleSendMessage}
           selectedAgent={selectedAgent}
           onAgentSelect={handleAgentSelect}
@@ -353,7 +343,7 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
           {/* Messages Area */}
           <ScrollArea className="flex-1 p-6" ref={scrollAreaRef}>
             <div className="space-y-6 max-w-4xl mx-auto">
-              {messages.map((message) => (
+              {displayMessages.map((message) => (
                 <div key={message.id} className="space-y-4">
                   {message.type === "user" && (
                     <div className="flex justify-end">
@@ -541,7 +531,7 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
                 </div>
               ))}
 
-              {isTyping && (
+              {isLoading && (
                 <div className="flex justify-start">
                   <div className="flex items-start space-x-3">
                     <Avatar className="w-8 h-8">
@@ -576,16 +566,16 @@ export function ChatInterface({ activeAgent, chatId, onAgentChange }: ChatInterf
               <div className="flex items-end space-x-4">
                 <div className="flex-1 relative">
                   <Input
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
+                    value={agentInput}
+                    onChange={handleAgentInputChange}
                     onKeyPress={handleKeyPress}
                     placeholder="Type your message..."
                     className="min-h-[48px] pr-12 bg-white border-slate-200/50 rounded-xl shadow-sm focus:shadow-md transition-shadow resize-none"
-                    disabled={isTyping}
+                    disabled={isLoading}
                   />
                   <Button
                     onClick={handleSendMessage}
-                    disabled={!inputValue.trim() || isTyping}
+                    disabled={!agentInput.trim() || isLoading}
                     size="icon"
                     className="absolute right-2 top-1/2 transform -translate-y-1/2 h-8 w-8 bg-blue-600 hover:bg-blue-700 rounded-lg"
                   >
